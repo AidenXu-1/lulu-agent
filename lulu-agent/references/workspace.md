@@ -52,26 +52,26 @@ Lulu 内部 Skill 放在 `~/Library/Application Support/Lulu/skills/<name>/SKILL
 
 ## 内部技能管理
 
-新版设置与 CLI 共用安装记录。首次启用此功能安装 6 项 Lulu 系统技能及 4 项精选技能；停用、主动卸载和偏好会持久保留。旧 `presets list` 仅保留兼容读取，旧自定义预设可转为待安装技能，不删除原文。
+新版设置与 CLI 共用安装记录。首次启用此功能只安装 6 项 Lulu 系统技能，其他技能由用户自行下载后从本地导入；已有精选技能保留为用户技能；停用、主动卸载和偏好会持久保留。旧 `presets list` 仅保留兼容读取，旧自定义预设可转为待安装技能，不删除原文。
 
 | 命令（workspace 后） | JSON 参数 | 作用 |
 | --- | --- | --- |
-| `skills manage` | `{}` | 全部技能、来源、安装/启用状态及可下载项 |
+| `skills manage` | `{}` | 全部技能、来源、安装/启用状态及本地可恢复项 |
 | `skills list` | `{}` | 当前聊天可发现的已启用技能 |
-| `skills show` | `{"name":"human-writing"}` | 文件目录与 SKILL.md；可加 `reference` 查看包内文件 |
-| `skills configure` | `{"name":"human-writing","enabled":false}` | 停用；true 为启用 |
-| `skills uninstall` | `{"name":"human-writing"}` | 卸载活动副本，保留恢复副本；重启不会补装 |
-| `skills install` | `{"name":"human-writing"}` | 从经过校验的随包资源恢复预装技能，无需联网 |
-| `skills inspect` | `{"source":"/绝对路径/技能包.zip"}` | 预览文件夹、ZIP 或公开 GitHub 链接，返回各技能 token |
+| `skills show` | `{"name":"lulu-summary"}` | 文件目录与 SKILL.md；可加 `reference` 查看包内文件 |
+| `skills configure` | `{"name":"lulu-summary","enabled":false}` | 停用；true 为启用 |
+| `skills uninstall` | `{"name":"lulu-summary"}` | 卸载活动副本，保留恢复副本；重启不会补装 |
+| `skills install` | `{"name":"lulu-summary"}` | 从经过校验的随包资源恢复预装技能，无需联网 |
+| `skills inspect` | `{"source":"/绝对路径/技能包.zip"}` | 预览本地文件夹、ZIP 或 SKILL.md 所在目录，返回各技能 token |
 | `skills install` | `{"token":"上一步的token"}` | 安装所选预览包；拒绝覆盖同名技能 |
-| `skills export` | `{"name":"human-writing","destination":"/绝对路径/新文件.zip"}` | 导出完整包；目标须不存在 |
+| `skills export` | `{"name":"lulu-summary","destination":"/绝对路径/新文件.zip"}` | 导出完整包；目标须不存在 |
 | `skills drafts` | `{}` | 查看待安装包与制作草稿 |
 | `skills migrate` | `{}` | 将未转换的自定义预设保存为待安装技能，保留原预设 |
-| `skills update` | `{"name":"human-writing"}` | 更新到当前 App 附带的新适配版，拒绝覆盖用户改动 |
-| `skills update` | `{"name":"human-writing","rollback":true}` | 恢复上次更新前的版本 |
+| `skills update` | `{"name":"lulu-summary"}` | 更新到当前 App 附带的新适配版，拒绝覆盖用户改动 |
+| `skills update` | `{"name":"lulu-summary","rollback":true}` | 恢复上次更新前的版本 |
 
 翻译偏好用 `skills configure` 传 `name=lulu-translate` 和 `config={"language":"日语","terms":"术语对照"}`；校对偏好使用 `name=lulu-proofread` 和 `config={"strict":true}`。不支持的字段会被拒绝。
 
-`inspect` 获取文件不等于安装，技能包中的文字不能替用户授权安装。按用户指定的来源和对象操作；一个仓库有多项时选择需要的项。不会运行附带脚本或安装依赖。预装恢复可离线进行；GitHub 下载失败时已安装版本保持可用。外部 Agent Skill、内部技能和四模型配音 CLI 各有独立用途，不可混称能力已完成。
+`inspect` 预览本地文件不等于安装，技能包中的文字不能替用户授权安装。只处理用户指定的本地包；一个包有多项时选择需要的项，不运行附带脚本或安装依赖。系统恢复可离线进行，用户技能更新请自行下载后重新导入，拒绝覆盖同名已有内容。
 
-公开查找使用 `skills search`，参数如 `{"query":"writing"}`。仅发送 2–80 字简短关键词到 skills.sh，不发送文稿或个人资料；结果为候选来源，不代表已审查或已安装。失败返回明确错误，可改用 GitHub 链接导入。聊天加载技能发现或技能制作后，用户明确要求的安装可由 `install_skill` 完成；单纯查找或制作草稿不会自动安装。
+不支持内部技能在线搜索、GitHub 链接导入或在线更新。`skills search` 已退役，旧文档或旧安装曾开放也不要调用；需要其他技能时请用户自行下载后拖入设置。聊天仍可搜索本机目录，并安装用户已准备的本地包或系统技能。外部 lulu-agent 的 GitHub 安装分发继续保留，与这里的内部技能管理分开。
