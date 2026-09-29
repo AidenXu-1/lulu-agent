@@ -10,7 +10,7 @@ Use the single installed Lulu product through its packaged console adapter. This
 ## Before any CLI use
 
 1. Use only `/Applications/Lulu.app`; do not search PATH or another App.
-2. Read [trust-anchor.md](references/trust-anchor.md), then run `scripts/verify_lulu.py` with no arguments. Stop unless generation 9 and the complete closed component set verify.
+2. Read [trust-anchor.md](references/trust-anchor.md), then run `python3 -B scripts/verify_lulu.py` with no arguments. Stop unless generation 9 and the complete closed component set verify.
 3. Invoke only `/Applications/Lulu.app/Contents/MacOS/lulu-agent-cli`. No PATH alias, optional shared Skill or shell shortcut is required.
 4. In Codex, run the canonical CLI with execution permission to access the current-user macOS Mach/XPC service (the local, outside-sandbox execution mode). A restricted sandbox can deny this channel even while Lulu and Core are healthy. Never work around it with another executable, source imports, sockets, or daemon.
 5. Read [protocol.md](references/protocol.md) before parsing a result or preparing a proposal. Unknown fields, versions, enums, capabilities, schemas, or errors fail closed.

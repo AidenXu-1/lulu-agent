@@ -168,6 +168,10 @@ def _verify_v2(app,state_root):
         if binding.get(field)!=receipt.get(field):raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
     if hashlib.sha256(raw).hexdigest()!=binding.get("component_manifest_sha256"):
         raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    return _verify_v2_components(app, manifest, raw, binding, tree)
+
+
+def _verify_v2_components(app, manifest, raw, binding, tree):
     records=tree.delivery_app_tree_records(app)
     components=[dict(r,role=_role(r["path"])) for r in records if r["type"]!="directory"]
     required={"Contents/MacOS/Lulu","Contents/MacOS/lulu-agent-cli","Contents/MacOS/lulu-agent-core",
@@ -191,11 +195,117 @@ def _verify_v2(app,state_root):
     return manifest,raw
 
 
+def _verify_standalone(app, state_root=None):
+    """Read-only public projection; signed Core still authenticates HMAC ownership."""
+    import plistlib
+    import re
+    import subprocess
+
+    tree = _v2_module()
+    tree.verify_delivery_marker(app)
+    observed = {}
+
+    def read(path, *, private=False):
+        if path.resolve() != path:
+            raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+        raw, metadata = _read(path)
+        if private and (stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_uid != os.getuid()):
+            raise VerificationError("AGENT_ENTRY_RECEIPT_REQUIRED")
+        observed[path] = raw
+        return raw
+
+    descriptor_raw = read(app/"Contents/Resources/standalone-install.v1.json")
+    descriptor = tree.strict_json(descriptor_raw)
+    fields = {"schema_id", "product_version", "product_build", "source_revision",
+              "candidate_generation", "cli_protocol", "capability_closed_set"}
+    if (type(descriptor) is not dict or set(descriptor) != fields
+            or descriptor["schema_id"] != "lulu.standalone-install-descriptor/v1"
+            or type(descriptor["candidate_generation"]) is not int or descriptor["candidate_generation"] != 9
+            or descriptor["cli_protocol"] != {"min": "1.0.0", "max": "2.0.0"}):
+        raise VerificationError("AGENT_ENTRY_VERSION_MISMATCH")
+    for name, pattern in (("product_version", r"[0-9]+\.[0-9]+\.[0-9]+"),
+                          ("product_build", r"[0-9]{8}\.[0-9]+"), ("source_revision", r"[a-f0-9]{40}")):
+        if type(descriptor[name]) is not str or re.fullmatch(pattern, descriptor[name]) is None:
+            raise VerificationError("AGENT_ENTRY_VERSION_MISMATCH")
+    capabilities = descriptor["capability_closed_set"]
+    if (type(capabilities) is not list or not 1 <= len(capabilities) <= 1000
+            or any(type(value) is not str or re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value) is None for value in capabilities)
+            or capabilities != sorted(set(capabilities))):
+        raise VerificationError("AGENT_ENTRY_VERSION_MISMATCH")
+    token = hashlib.sha256(descriptor_raw + b"\0" + os.fsencode(app)).hexdigest()
+    root = (Path(state_root) if state_root is not None else
+            Path.home()/"Library/Application Support/Lulu/AgentEntry/app-generations"/token)
+    if root.name != token or root.resolve() != root:
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    owner = tree.strict_json(read(root/"ownership.json", private=True))
+    owner_fields = {"schema_id", "source_kind", "source_app_sha256", "descriptor_sha256",
+        "component_manifest_sha256", "app_component_set_digest", "installation_id",
+        "installation_id_digest", "candidate_generation", "app_path", "core_cdhash", "hmac_sha256"}
+    if (type(owner) is not dict or set(owner) != owner_fields
+            or owner["schema_id"] != "lulu.agent-entry-ownership/v4"
+            or owner["source_kind"] != "signed_app" or type(owner["candidate_generation"]) is not int
+            or owner["candidate_generation"] != 9 or owner["app_path"] != str(app)
+            or owner["source_app_sha256"] != owner["app_component_set_digest"]
+            or owner["descriptor_sha256"] != hashlib.sha256(descriptor_raw).hexdigest()):
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    for name in ("source_app_sha256", "descriptor_sha256", "component_manifest_sha256",
+                 "app_component_set_digest", "installation_id_digest", "hmac_sha256", "core_cdhash"):
+        width = 40 if name == "core_cdhash" else 64
+        if type(owner[name]) is not str or re.fullmatch(r"[a-f0-9]{%d}" % width, owner[name]) is None:
+            raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    if (type(owner["installation_id"]) is not str or len(owner["installation_id"]) < 8
+            or hashlib.sha256(owner["installation_id"].encode()).hexdigest() != owner["installation_id_digest"]):
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    binding = {name: owner[name] for name in ("source_kind", "source_app_sha256", "component_manifest_sha256",
+        "app_component_set_digest", "installation_id_digest", "candidate_generation")}
+    current = tree.strict_json(read(root/"current.json", private=True))
+    if current != {"schema_id": "lulu.agent-entry-current-action/v3", "phase": "COMMITTED",
+                   "state": "ready", "binding": binding}:
+        raise VerificationError("AGENT_ENTRY_RECEIPT_REQUIRED")
+    source = tree.strict_json(read(root/"product-materials-v2/verified-app.json", private=True))
+    expected = {"schema_id": "lulu.verified-app-install-source/v1", "source_kind": "signed_app",
+        **{name: owner[name] for name in ("descriptor_sha256", "component_manifest_sha256",
+               "app_component_set_digest", "candidate_generation", "core_cdhash")}}
+    if source != expected:
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    raw = read(root/"product-materials-v2"/tree.MANIFEST_NAME, private=True)
+    manifest = tree.strict_json(raw)
+    manifest_fields = {"schema_id", "product_version", "product_build", "source_revision", "candidate_generation",
+        "installation_profile", "cli_protocol", "catalog", "capability_closed_set", "skill_source",
+        "skill_compatibility", "launcher", "launch_agent", "transport_policy_sha256", "build_profile_sha256",
+        "components", "app_component_set_digest", "contains_secret_material"}
+    if (type(manifest) is not dict or set(manifest) != manifest_fields
+            or manifest["schema_id"] != tree.MANIFEST_SCHEMA or manifest["installation_profile"] != "circle_internal"
+            or manifest["contains_secret_material"] is not False
+            or any(manifest[name] != descriptor[name] for name in fields - {"schema_id"})
+            or hashlib.sha256(raw).hexdigest() != owner["component_manifest_sha256"]):
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    label = 'com.lulu.transcribe.agent-core.app-' + token
+    registration = plistlib.loads(read(root/"core.plist", private=True))
+    if registration != {"Label": label, "ProgramArguments": [str(app/"Contents/MacOS/lulu-agent-core")],
+                        "MachServices": {label: True}, "ProcessType": "Interactive"}:
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    _verify_v2_components(app, manifest, raw, binding, tree)
+    signature = subprocess.run(['/usr/bin/codesign', '-d', '--verbose=4', str(app/'Contents/MacOS/lulu-agent-core')],
+                               stdin=subprocess.DEVNULL, capture_output=True, timeout=30, check=False)
+    matches = re.findall(rb'^CDHash=([a-f0-9]{40})$', signature.stdout + signature.stderr, re.MULTILINE)
+    if signature.returncode != 0 or matches != [owner['core_cdhash'].encode()]:
+        raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    # A concurrent preparation/replacement cannot mix two sets of receipts.
+    for path, initial in observed.items():
+        if path.resolve() != path or _read(path)[0] != initial:
+            raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
+    return manifest, raw
+
+
 def verify(app: Path = APP, *, state_root: Path | None = None) -> dict[str, object]:
     if app != APP or app.is_symlink():
         raise VerificationError("APP_PATH_NOT_ALLOWED")
     v2 = os.path.lexists(app/"Contents/Resources/component_delivery.v2.json") or os.path.lexists(app/"Contents/Resources/agent_links.v2.json")
-    if v2:
+    standalone = os.path.lexists(app/"Contents/Resources/standalone-install.v1.json")
+    if standalone:
+        manifest,raw_manifest = _verify_standalone(app, state_root)
+    elif v2:
         manifest,raw_manifest=_verify_v2(app,Path(state_root) if state_root is not None else Path.home()/"Library/Application Support/Lulu/AgentEntry")
     else:
         manifest_path = app / MANIFEST
