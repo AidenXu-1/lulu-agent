@@ -23,6 +23,19 @@ Codex must allow local Mach/XPC communication before invoking /Applications/Lulu
 
 CORE_REQUEST_OUTCOME_UNKNOWN with phase=dispatched and effect_count=unknown means a command may have reached Core. Do not replay. Read original jobs/status/receipts with local XPC permission and reconcile the result first. All transport errors are closed lulu.agent/v1 JSON with retryable=false; traceback or unknown output is not authority.
 
+## 安装准备诊断
+
+以下是签名 Core 的本机安装诊断码，不是新增 `lulu.agent/v1` 业务错误对象。
+
+| 诊断码 | 含义与处理 |
+|---|---|
+| `JOB_CORE_PARTITION_INVALID` | 任务凭据的分区校验未通过。旧历史读取按旧 Core 的已验证身份校验；不能把它直接解释为新版本不兼容。保留凭据与任务目录，联系开发者核对改动前的失败记录。 |
+| `JOB_CORE_ACCESS_INVALID` | 任务凭据的所有者、受信应用或授权结构不符合创建时的约束。保留现场，联系开发者核对来源；不能自动添加工具授权、修改分区或删除条目。 |
+| `PRODUCT_TASK_HANDOVER_INVALID` | 旧任务记录缺少可信登记、认证失败或交接记录不一致。保留任务目录与对应凭据；不能通过移走目录、删除密钥或把旧历史当新安装来继续。 |
+| `INSTALLATION_PREPARATION_TIMEOUT` | GUI 等待签名 Core 准备超时。正常重开，并在系统授权弹窗实际出现时由用户亲自处理。更新事务须以原回退结果为准，不把超时当安装成功。 |
+
+完全空、本人所有、权限为 0700、没有符号链接且没有对应 key/anchor 的未初始化任务目录可正常交接，不需要用户清理。其余情况不能仅凭“文稿库还在”宣称旧任务可完整恢复。需要核对原 App 与构建号、故障首次发生时的闭合错误码及是否人工改过凭据；诊断材料不得包含 API Key、Cookie 或密钥值。
+
 ## 本地转录模型原因
 
 MODEL_NOT_READY 细分 MODEL_NOT_INSTALLED（未安装）和 MODEL_INSTALLATION_INCOMPLETE（已有文件但不完整或安装校验失败）。RUNTIME_NOT_READY 细分 MODEL_RUNTIME_UNAVAILABLE（已安装但运行环境/平台不支持）和 MODEL_READINESS_PROBE_FAILED（检查失败）。按 reason_code 解释，不把所有情况说成未安装。

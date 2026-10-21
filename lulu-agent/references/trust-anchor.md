@@ -11,7 +11,9 @@ This checks damage and mixed product versions within a trusted macOS account. It
 
 ## Standalone App installation
 
-When the signed `standalone-install.v1.json` descriptor is present, resolve only its exact path-bound `AgentEntry/app-generations/<digest>` directory. Verify the committed action, owner projection, verified-App receipt, complete signed tree, Core signature and service registration together; never fall back to an older DMG receipt if that generation is missing or damaged. The native Core authenticates ownership HMAC before serving commands; this read-only Python check does not read Keychain or claim to authenticate HMAC.
+The signed `standalone-install.v1.json` file supports descriptor v1 and v2. V1 resolves `AgentEntry/app-generations/<digest>`; v2 accepts only `storage_scheme=local-integrity-v1` and resolves `AgentEntry/local-app-generations/<digest>`. Verify the same closed receipts, complete signed tree and native Core identity in either format. Unknown schemes fail closed; the public projection never reads system credentials.
+
+When the signed `standalone-install.v1.json` descriptor is present, resolve only its exact path-bound directory in the descriptor-specific namespace above. Verify the committed action, owner projection, verified-App receipt, complete signed tree, Core signature and service registration together; never fall back to an older DMG receipt if that generation is missing or damaged. The native Core authenticates ownership HMAC before serving commands; this read-only Python check does not read Keychain or claim to authenticate HMAC.
 
 The public Skill can be upgraded separately from Lulu and does not depend on the optional shared shortcut. The App-bundled managed Skill additionally checks its installed file tree and the exact launcher template for that installation format. Use Python `-B` so the check does not create cache files inside managed Skill directories.
 

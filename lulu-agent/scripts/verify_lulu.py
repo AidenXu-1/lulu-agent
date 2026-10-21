@@ -218,8 +218,10 @@ def _verify_standalone(app, state_root=None):
     descriptor = tree.strict_json(descriptor_raw)
     fields = {"schema_id", "product_version", "product_build", "source_revision",
               "candidate_generation", "cli_protocol", "capability_closed_set"}
-    if (type(descriptor) is not dict or set(descriptor) != fields
-            or descriptor["schema_id"] != "lulu.standalone-install-descriptor/v1"
+    local = type(descriptor) is dict and descriptor.get("schema_id") == "lulu.standalone-install-descriptor/v2"
+    if (type(descriptor) is not dict or set(descriptor) != (fields | {"storage_scheme"} if local else fields)
+            or descriptor["schema_id"] not in {"lulu.standalone-install-descriptor/v1", "lulu.standalone-install-descriptor/v2"}
+            or (local and descriptor["storage_scheme"] != "local-integrity-v1")
             or type(descriptor["candidate_generation"]) is not int or descriptor["candidate_generation"] != 9
             or descriptor["cli_protocol"] != {"min": "1.0.0", "max": "2.0.0"}):
         raise VerificationError("AGENT_ENTRY_VERSION_MISMATCH")
@@ -233,8 +235,9 @@ def _verify_standalone(app, state_root=None):
             or capabilities != sorted(set(capabilities))):
         raise VerificationError("AGENT_ENTRY_VERSION_MISMATCH")
     token = hashlib.sha256(descriptor_raw + b"\0" + os.fsencode(app)).hexdigest()
+    namespace = "local-app-generations" if local else "app-generations"
     root = (Path(state_root) if state_root is not None else
-            Path.home()/"Library/Application Support/Lulu/AgentEntry/app-generations"/token)
+            Path.home()/"Library/Application Support/Lulu/AgentEntry"/namespace/token)
     if root.name != token or root.resolve() != root:
         raise VerificationError("AGENT_ENTRY_COMPONENT_MISMATCH")
     owner = tree.strict_json(read(root/"ownership.json", private=True))
